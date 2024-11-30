@@ -35,7 +35,7 @@ class main_dataset(base):
             images_dir, 
             masks_dir, 
             image_count,
-            classes=None, 
+            classes=CLASSES, 
             augmentation=None, 
             preprocessing=None,
     ):
