@@ -91,7 +91,7 @@ parser.add_argument("--os", type=int, default=16, help="")
 parser.add_argument("--weight-decay", type=float, default=5e-4, help="")
 parser.add_argument("--logdir", type=str, default="./logs/", help="")
 parser.add_argument("--save", type=str, default="./saved_model/", help="")
-parser.add_argument("--local_rank", type=int, default=0)
+parser.add_argument("--local_rank", type=int, default=2)
 parser.add_argument("--image_count", type=int, default=8500, help="How much image you want to train")
 parser.add_argument('-v', '--val_split',type=float, default=0.3, help='Validation Split for training and validation set.')
 
@@ -100,7 +100,8 @@ args = parser.parse_args()
 torch.cuda.set_device(args.local_rank)
 dist.init_process_group(backend='nccl', init_method='env://')
 
-args.world_size = torch.distributed.get_world_size()
+print("Rank: ", dist.get_rank(), "World Size: ", dist.get_world_size())
+args.world_size = 2
 args.distributed = args.world_size > 1
 
 setup_for_distributed(args.local_rank == 0)
@@ -142,6 +143,7 @@ net = DeepLabV3Plus(num_classes=args.num_classes, os=args.os)
 net = net.to(device)
 print(device)
 if device == 'cuda':
+    
     net = torch.nn.parallel.DistributedDataParallel(
         net, 
         device_ids=[args.local_rank], 
