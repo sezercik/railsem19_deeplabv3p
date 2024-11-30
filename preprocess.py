@@ -50,27 +50,32 @@ class main_dataset(base):
         self.preprocessing = preprocessing
     
     def __getitem__(self, i):
-        #read data
+        # read data
         image = cv2.imread(self.images_fps[i])
-        mask = cv2.imread(self.masks_fps[i],0)
-        
-        #crop and reshape
+        mask = cv2.imread(self.masks_fps[i], 0)  # Read the mask in grayscale
+
+        # Convert to RGB for image
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        masks =[(mask == v) for v in self.class_values]
-        mask = np.stack(masks,axis = -1).astype('float')
-        
-        # apply augmentations
+        # Generate one-hot encoded masks for each class
+        masks = [(mask == v) for v in self.class_values]
+        mask = np.stack(masks, axis=-1).astype(np.float32)
+
+        # Convert one-hot encoded mask to class indices
+        mask = np.argmax(mask, axis=-1).astype(np.int64)  # Get the class indices for each pixel
+
+        # Apply augmentations if any
         if self.augmentation:
             sample = self.augmentation(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
-        
-        # apply preprocessing
+
+        # Apply preprocessing if any
         if self.preprocessing:
             sample = self.preprocessing(image=image, mask=mask)
             image, mask = sample['image'], sample['mask']
-            
+        
         return image, mask
+
         
         
     def __len__(self):
