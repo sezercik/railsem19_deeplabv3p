@@ -52,8 +52,14 @@ def get_validation_augmentation():
     return album.Compose(test_transform)
 
 
-def to_tensor(x, **kwargs):
-    return x.transpose(2, 0, 1).astype('float32')
+def to_tensor(x):
+    if x.ndim == 3:  # If the array is an image with 3 dimensions
+        return x.transpose(2, 0, 1).astype('float32')  # Convert image (H, W, C) to (C, H, W)
+    elif x.ndim == 2:  # If the array is a mask with 2 dimensions (H, W)
+        return x.astype('long')  # Mask should be of type long (int64) for PyTorch loss functions
+    else:
+        raise ValueError(f"Unsupported array dimensions: {x.ndim}")
+
 
 
 def get_preprocessing(preprocessing_fn=None):
