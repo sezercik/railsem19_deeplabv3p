@@ -2,9 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
-import torch.distributed as dist
-import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
+import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader, random_split
 import albumentations as album
 from tensorboardX import SummaryWriter
@@ -78,23 +77,14 @@ parser.add_argument("--os", type=int, default=16, help="")
 parser.add_argument("--weight-decay", type=float, default=5e-4, help="")
 parser.add_argument("--logdir", type=str, default="./logs/", help="")
 parser.add_argument("--save", type=str, default="./saved_model/", help="")
-parser.add_argument("--local_rank", type=int)  # No default, should be passed automatically
 parser.add_argument("--image_count", type=int, default=8500, help="How much image you want to train")
 parser.add_argument('-v', '--val_split', type=float, default=0.3, help='Validation Split for training and validation set.')
 
 args = parser.parse_args()
 
-# Set device based on local_rank
-torch.cuda.set_device(args.local_rank)
-
-# Initialize the distributed process group (NCCL backend for GPUs)
-dist.init_process_group(backend='nccl', init_method='env://')
-
-# Print rank and world size
-print("Rank: ", dist.get_rank(), "World Size: ", dist.get_world_size())
-
-# Setup the distributed setup for logging
-setup_for_distributed(dist.get_rank() == 0)
+# Set the device to use the available GPUs (Kaggle has at least two GPUs available)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+torch.cuda.set_device(0)  # Set the first GPU as the default (you can specify a different GPU here)
 
 # Data loading
 images_dir = os.path.join(args.data, 'jpgs/rs19_val')
@@ -114,23 +104,16 @@ validation_split = args.val_split
 train_dataset, val_dataset = random_split(org_dataset, [int(args.image_count * (1 - args.val_split)),
                                                         int(args.image_count * args.val_split)])
 
-# Use DistributedSampler to ensure each GPU gets a different subset of the data
-train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.worker, drop_last=False, shuffle=True, pin_memory=True)
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=args.worker, drop_last=False, shuffle=False, pin_memory=True, sampler=train_sampler)
-
-# Initialize the model and wrap it in DistributedDataParallel
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# Initialize the model
 net = DeepLabV3Plus(num_classes=args.num_classes, os=args.os)
 net = net.to(device)
 
-# Use DistributedDataParallel to parallelize the model across multiple GPUs
-net = torch.nn.parallel.DistributedDataParallel(
-    net,
-    device_ids=[args.local_rank],  # Each process uses a single GPU
-    output_device=args.local_rank,
-    find_unused_parameters=True
-)
+# Use DataParallel for multi-GPU setup
+if torch.cuda.device_count() > 1:
+    print("Using", torch.cuda.device_count(), "GPUs!")
+    net = nn.DataParallel(net)  # This will wrap the model for multi-GPU usage
 
 # Optimizer and loss function
 criterion = nn.CrossEntropyLoss()
@@ -156,7 +139,7 @@ def train(epoch, iteration, scheduler, total_loss):
 
         loss = criterion(out, labels)
 
-        train_loss += reduce_tensor(loss, dist.get_world_size()) if dist.is_initialized() else loss
+        train_loss += loss
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -172,18 +155,11 @@ def train(epoch, iteration, scheduler, total_loss):
 
     print(f"\nepoch: {epoch}, loss: {train_loss / (idx + 1):.4f}, lr: {scheduler.get_lr()[0]:.6f}")
 
-    # Save the best model (only from rank 0)
-    if dist.get_rank() == 0:
-        state = {'net': net.module.state_dict(), 'epoch': epoch, 'iter': iteration}
-        if train_loss < total_loss:
-            total_loss = train_loss
-            saving_path = os.path.join(args.save, 'best_model.pth')
-            torch.save(state, saving_path)
-            print(f"Model saved in {saving_path}")
-        if epoch == args.epoch:
-            saving_path = os.path.join(args.save, 'last_model.pth')
-            torch.save(state, saving_path)
-            print(f"Model saved in {saving_path}")
+    # Save the best model
+    if epoch == args.epoch:
+        saving_path = os.path.join(args.save, 'last_model.pth')
+        torch.save(net.state_dict(), saving_path)
+        print(f"Model saved in {saving_path}")
 
     return epoch, iteration, total_loss
 
