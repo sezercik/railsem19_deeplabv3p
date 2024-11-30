@@ -93,7 +93,7 @@ parser.add_argument("--logdir", type=str, default="./logs/", help="")
 parser.add_argument("--save", type=str, default="./saved_model/", help="")
 parser.add_argument("--local_rank", type=int, default=0)
 parser.add_argument("--image_count", type=int, default=8500, help="How much image you want to train")
-
+parser.add_argument('-v', '--val_split',type=float, default=0.3, help='Validation Split for training and validation set.')
 
 args = parser.parse_args()
 
