@@ -82,7 +82,7 @@ def reduce_tensor(tensor, world_size):
 parser = argparse.ArgumentParser(description="DeepLabV3Plus Network")
 parser.add_argument("--data", type=str, default="/dataset", help="")
 parser.add_argument("--batch-size", type=int, default=4, help="")
-parser.add_argument("--worker", type=int, default=12, help="")
+parser.add_argument("--worker", type=int, default=4, help="")
 parser.add_argument("--epoch", type=int, default=200, help="")
 parser.add_argument("--num-classes", type=int, default=19, help="")
 parser.add_argument("--momentum", type=float, default=0.9, help="")
@@ -142,7 +142,12 @@ net = DeepLabV3Plus(num_classes=args.num_classes, os=args.os)
 net = net.to(device)
 print(device)
 if device == 'cuda':
-    net = torch.nn.parallel.DistributedDataParallel(net, device_ids=[args.local_rank], output_device=args.local_rank, find_unused_parameters=True)
+    net = torch.nn.parallel.DistributedDataParallel(
+        net, 
+        device_ids=[args.local_rank], 
+        output_device=args.local_rank, 
+        find_unused_parameters=True
+        )
     cudnn.benchmark = True
 
 criterion = nn.CrossEntropyLoss()
