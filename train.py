@@ -131,7 +131,7 @@ def train(epoch, iteration, scheduler, total_loss):
     train_loss = 0
     for idx, (images, labels) in enumerate(train_loader):
         iteration += 1
-        _, h, w = labels.size()
+        _, _, h, w = labels.size()  # Unpack batch_size, num_classes, height, width
 
         images, labels = images.to(device), labels.to(device).long()
         out = net(images)
